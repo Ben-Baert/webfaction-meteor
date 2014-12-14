@@ -319,24 +319,24 @@ function getMongoUrl() {
 
 function downloadMongoRPMs() {
   mkdir $MONGO_APP_DIR/dist
-  pushd $MONGO_APP_DIR/dist
+  pushd $MONGO_APP_DIR/dist > /dev/null
   for RPM in "${MONGO_RPMS[@]}";do
     RPM_FILENAME=${MONGO_RPM_PREFIX}-${$RPM}-${MONGO_VERSION}.${ARCH}.rpm
     URL=${MONGO_REPO}/${RPM_FILENAME}
     wget $URL
   done
-  popd
+  popd > /dev/null
 }
 
 
 function downloadNodeRPMs() {
   mkdir $NODE_APP_DIR/dist
-  pushd $NODE_APP_DIR/dist
+  pushd $NODE_APP_DIR/dist > /dev/null
   for RPM in "${NODE_RPMS[@]}";do
     URL=${NODE_REPO}/${RPM}
     wget $URL
   done
-  popd
+  popd > /dev/null
 }
 
 
@@ -364,15 +364,15 @@ function installScons() {
   cd ~/src
   wget http://sourceforge.net/projects/boost/files/boost/1.55.0/boost_1_55_0.tar.gz
   tar zxf boost_1_55_0.tar.gz
-  pushd boost_1_55_0
+  pushd boost_1_55_0 > /dev/null
     ./bootstrap.sh
     ./b2 install --prefix=$HOME
-  popd
+  popd > /dev/null
   wget http://sourceforge.net/projects/scons/files/scons/2.3.1/scons-2.3.1.tar.gz
   tar zxf scons-2.3.1.tar.gz
-  pushd scons-2.3.1
+  pushd scons-2.3.1 > /dev/null
     python2.7 setup.py install
-  popd
+  popd > /dev/null
   exit 1
   )
 }
@@ -526,9 +526,9 @@ function bs_appPort() {
 
 function sourceConfig() {
   APP_NAME="$1"
-  APP_CONFIG=$HOME/.wfmtr/${APP_NAME}.conf
+  APP_CONFIG="$HOME/.wfmtr/${APP_NAME}.conf"
   if [ -f $APP_CONFIG ]; then
-    source $HOME/wfmtr/${APP_NAME}.conf
+    source $HOME/.wfmtr/${APP_NAME}.conf
   else
     echo "ERROR: Config file missing!"
     exit 0
@@ -643,7 +643,7 @@ EOL
 function bundle() {
   APP_NAME="$1"
   sourceConfig $APP_NAME
-  pushd $APP_DIR
+  pushd $APP_DIR > /dev/null
   if [ -f settings.json ]; then
     if confirm "use your settings.json"; then
       METEOR_SETTINGS="$(cat settings.json)"
@@ -653,12 +653,27 @@ METEOR_SETTINGS=$METEOR_SETTINGS
 EOL
     fi
   fi
-  meteor install
-  meteor bundle $BIN_APP_DIR/bundle.tgz
-  popd
-  pushd $BIN_APP_DIR
+  if confirm "bundle app"; then
+    meteor install
+    meteor bundle $BIN_APP_DIR/bundle.tgz
+  else
+    popd > /dev/null
+    exit 0
+  fi
+  popd > /dev/null
+  pushd $BIN_APP_DIR > /dev/null
+  if [ -d bundle ]; then
+    echo "Bundle exists"
+    if confirm "replace bundle"; then
+      rm -rf bundle
+    else
+      echo "Clean up your mess."
+      exit 1
+    fi
+  fi
   tar xvzf bundle.tgz
   rm -f bundle.tgz
+  popd > /dev/null
   echo -e "Meteor app bundled and ready to go."
 }
 
@@ -672,9 +687,9 @@ function deploy() {
     exit 0
   else
     if confirm "init app dir and pull from repo"; then
-      pushd $APP_DIR
+      pushd $APP_DIR > /dev/null
       initMeteorApp $GIT_URL
-      popd
+      popd > /dev/null
     fi
   fi
   if confirm "bundle app for node.js"; then
@@ -691,18 +706,18 @@ function deploy() {
 function update() {
   APP_NAME="$1"
   sourceConfig $APP_NAME
-  pushd $APP_DIR
+  pushd $APP_DIR > /dev/null
   initMeteorApp $GIT_URL
-  popd
+  popd > /dev/null
   if confirm "bundle app for node.js"; then
     echo -n "  "
     if confirm "remove bundle"; then
-      pushd $BIN_APP_DIR
+      pushd $BIN_APP_DIR > /dev/null
       STAMP=$(date +%s)
       tar cvf bundle.${STAMP}.tar bundle
       echo "Bundle archived to bundle.${STAMP}.tar"
       rm -rf bundle
-      popd
+      popd > /dev/null
     fi
     bundle $APP_NAME
   fi
@@ -744,7 +759,7 @@ function run() {
     echo "ERROR: App is running. PID $(cat $APP_PID_FILE)."
     exit 0
   fi
-  pushd $APP_DIR
+  pushd $APP_DIR > /dev/null
   startdb $APP_NAME
   forever restart --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js || forever start --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is running."
@@ -763,7 +778,7 @@ function stop() {
     echo "ERROR: App is running. PID $(cat $APP_PID_FILE)."
     exit 0
   fi
-  pushd $APP_DIR
+  pushd $APP_DIR > /dev/null
   forever stop --pidfile $APP_PID_FILE -l $APP_LOG_FILE $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is stopped."
   exit 1
