@@ -56,8 +56,7 @@ SERVER_FQDN=`hostname -f`
 function py_server_connect() {
   # takes username, password, server as input
   # eg. py_server_connect bob secret Web333
-  pyStr="
-import xmlrpclib
+  pyStr="import xmlrpclib
 server=xmlrpclib.ServerProxy('https://api.webfaction.com/')
 session_id, account=server.login(\"${1}\",\"${2}\",\"${3^}\")
 "
@@ -213,13 +212,15 @@ function extractRPMs() {
 
 function updatePath() {
   # updates PATH and rehash
-  # eg. updatePath myGreatApp
-  APPBIN=$HOME/webapps/$1/bin
-  APPLIB=$HOME/webapps/$1/var/lib
-  echo 'export PATH=${APPBIN}:${PATH}' >> ~/.bashrc
-  echo 'export LD_LIBRARY_PATH=${APPLIB}:${LD_LIBRARY_PATH}' >> ~/.bashrc
+  # eg. updatePath $HOME/bin
+  # 
+  NEWPATH=$1
+  if [[ ":$PATH:" != *":$NEWPATH:"* ]]; then
+  echo 'export PATH=${NEWPATH}:${PATH}' >> ~/.bashrc
   hash -r
 }
+
+
 
 
 function joinLines() {
@@ -345,10 +346,7 @@ function initEnv() {
   for REQDIR in "${REQDIRS[@]}"; do
     [[ -d "$REQDIR" ]] || mkdir $USER_BIN
   done
-  if [[ ":$PATH:" != *":$USER_BIN:"* ]]; then
-    echo "PATH=\$PATH:$USER_BIN">>~/.bashrc
-    echo "export \$PATH">>~/.bashrc
-  fi
+  updatePath $HOME/bin
   hash -r
 }
 
@@ -384,39 +382,36 @@ function installNode() {
   # eg. installNode $HOME
   PREFIX=$1
   cd $PREFIX/src
+  [ -d "node" ] && rm -rf node
   git clone https://github.com/joyent/node.git
   cd node
   ./configure --prefix=$PREFIX
   make
   make install
   cd
-  export PATH=${1}/bin:${PATH}
   npm install -g forever mailchimp less sass
-  popd
   echo "Installed Node.js"
 }
 
 
 function installMongo() {
-  pushd $1/src
-    wget $MONGO_DL_URL
-    tar zxf $MONGO_TARBALL
-    pushd $MONGO_DIR/bin
-      for MNGBIN in *; do
-        [ ! -f $HOME/bin/$MNGBIN ] && cp $MNGBIN $HOME/bin/
-      done
-      popd
-  popd
+  cd $1/src
+  wget $MONGO_DL_URL
+  tar zxf $MONGO_TARBALL
+  cd $MONGO_DIR/bin
+  for MNGBIN in *; do
+    [ ! -f $HOME/bin/$MNGBIN ] && cp -v $MNGBIN $HOME/bin/
+  done
 }
 
 
 function compileMongo() {
   command -v scons >/dev/null 2>&1 || installScons
-  pushd $1/src
+  cd $1/src
     wget https://fastdl.mongodb.org/src/mongodb-src-r2.4.12.tar.gz
     tar zxf mongodb-src-r2.4.12.tar.gz
     scons install --64 --ssl --prefix="${1}"
-  popd
+  cd
   echo "Installed MongoDB"
 }
 
@@ -425,11 +420,11 @@ function installMeteor() {
   # takes prefix as input
   # eg. installMeteor $HOME/webapps/myGreatApp
   # Note: Node must already be installed!!!
-  pushd $1/src
+  cd $1/src
     wget https://install.meteor.com -O install_meteor.sh
     sed -i 's/^PREFIX=.*$/PREFIX=${1}/g' install_meteor.sh
     sh install_meteor.sh
-  popd
+  cd
 }
 
 
