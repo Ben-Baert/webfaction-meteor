@@ -435,8 +435,10 @@ function createPlaceholderApp() {
   APP_NAME=$1
   APP_DIR=$HOME/webapps/$APP_NAME
   cd $HOME/tmp
+  rm -rf $APP_NAME
   meteor create $APP_NAME
   rsync -av $APP_NAME/ $APP_DIR/
+  cd
 }
 
 
