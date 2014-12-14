@@ -655,12 +655,15 @@ function bundle() {
   sourceConfig $APP_NAME
   pushd $APP_DIR > /dev/null
   if [ -f settings.json ]; then
+    SETTINGS_JSON="${APP_DIR}/settings.json"
     if confirm "use your settings.json"; then
       METEOR_SETTINGS="$(cat settings.json)"
       export METEOR_SETTINGS
       cat >> $APP_CONFIG <<EOL
-export METEOR_SETTINGS="$METEOR_SETTINGS"
+export METEOR_SETTINGS="$(cat ${SETTINGS_JSON})"
 EOL
+    echo "Note: currently there's a bug here where the settings get written multiple times."
+    echo "      It's not a big deal but if you want to do some housekeeping then remove the duplicates manuallu."
     fi
   fi
   if confirm "bundle the app $APP_NAME"; then
