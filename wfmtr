@@ -9,13 +9,13 @@
 function usage() {
   case "$1" in
     "simple")
-      echo -e " Usage: $0 [bootstrap|deploy]\n\n"
+      echo -e " Usage: wfmtr [bootstrap|deploy]\n\n"
       ;;
     "complex")
-      echo -e " Usage: $0 [update|run|stop|startdb] APP_NAME\n\n"
+      echo -e " Usage: wfmtr [update|run|stop|startdb] APP_NAME\n\n"
       ;;
     *)
-      echo -e " Usage: $0 [bootstrap|deploy|update|run|stop|startdb]\n\n"
+      echo -e " Usage: wfmtr [bootstrap|deploy|update|run|stop|startdb]\n\n"
       ;;
   esac
   exit 1
@@ -56,79 +56,113 @@ SERVER_FQDN=`hostname -f`
 function py_server_connect() {
   # takes username, password, server as input
   # eg. py_server_connect bob secret Web333
-  echo "import xmlrpclib"
-  echo "server=xmlrpclib.ServerProxy('https://api.webfaction.com/')"
-  echo "session_id, account=server.login(${1},${2},${3^})"
+  pyStr="
+import xmlrpclib
+server=xmlrpclib.ServerProxy('https://api.webfaction.com/')
+session_id, account=server.login(\"${1}\",\"${2}\",\"${3^}\")
+"
+  echo "${pyStr}"
 }
 
 
 function py_create_app() {
   # takes app name as input
   # eg. py_delete_app myGreatApp
-  echo "server.create_app(session_id, '$1', 'custom_app_with_port')"
+  pyStr="
+server.create_app(session_id, \"$1\", 'custom_app_with_port')
+"
+  echo "${pyStr}"
 }
 
 
 function py_appExists() {
   # takes app name as string
   # eg. py_appExists myGreatApp
-  echo "print 1 if any(app['name']=='$1' for app in server.list_apps(session_id)) else 0"
+  pyStr="
+print 1 if any(app['name']==\"$1\" for app in server.list_apps(session_id)) else 0
+"
+  echo "${pyStr}"
 }
 
 
 function py_appPort() {
   # takes app name as input
   # eg. py_appPort myGreatApp
-  echo "print ([app['port'] for app in server.list_apps(session_id) if app['name']=='$1'] or [0])[0]"
+  pyStr="
+print ([app['port'] for app in server.list_apps(session_id) if app['name']=='$1'] or [0])[0]
+"
+  echo "${pyStr}"
 }
 
 
 function py_delete_app() {
   # takes app name as input
   # eg. py_delete_app myGreatApp
-  echo "server.delete_app(session_id,'$1')"
+  
+  pyStr="
+server.delete_app(session_id,'$1')
+"
+  echo "${pyStr}"
 }
 
 
 function py_create_domain() {
   # takes tld, subdomain as input
   # eg. py_create_domain mysite.com www
-  echo "server.create_domain(session_id, '$1', '$2')"
+  pyStr="
+server.create_domain(session_id, '$1', '$2')
+"
+  echo "${pyStr}"
 }
 
 
 function py_domainExists() {
   # takes tld as string
   # eg. py_domainExists mysite.com
-  echo "print 1 if any(tld['domain']=='$1' for tld in server.list_domains(session_id)) else 0"
+  pyStr="
+print 1 if any(tld['domain']=='$1' for tld in server.list_domains(session_id)) else 0
+"
+  echo "${pyStr}"
 }
 
 
 function py_subdomainExists() {
   # takes subdomain and fqdn as string
   # eg. py_subdomainExists www mysite.com
-  echo "print 1 if ('$1' in ([domain['subdomains'] for domain in server.list_domains(session_id) if domain['domain']=='$2'] or ['randomstring'])[0]) else 0"
+  pyStr="
+print 1 if ('$1' in ([domain['subdomains'] for domain in server.list_domains(session_id) if domain['domain']=='$2'] or ['randomstring'])[0]) else 0
+"
+  echo "${pyStr}"
 }
 
 
 function py_create_website() {
   # takes site name, ip, one domain, appname as input
   # eg. py_create_website myGreatSite 1.1.1.1 mysite.com myGreatApp
-  echo "server.create_website(session_id, '$1', '$2', False, ['$3'], ['$4', '/'])"
+  pyStr="
+server.create_website(session_id, '$1', '$2', False, ['$3'], ['$4', '/'])
+"
+  echo "${pyStr}"
 }
 
 
 function py_websiteExists() {
   # takes app name as string
   # eg. py_appExists myGreatApp
-  echo "print 1 if any(website['name']=='$1' for website in server.list_apps(session_id)) else 0"
+  pyStr="
+print 1 if any(website['name']=='$1' for website in server.list_apps(session_id)) else 0
+"
+  echo "${pyStr}"
 }
 
 
 function py_delete_website() {
   # takes site name, ip as input
   # eg. py_delete_website myGreatSite 1.1.1.1
-  echo "server.delete_website(session_id, '$1', '$2', False)"
+  pyStr="
+server.delete_website(session_id, '$1', '$2', False)
+"
+  echo "${pyStr}"
 }
 
 
@@ -208,7 +242,7 @@ function confirm() {
   # else
   #  echo "Doing Nothing"
   # fi
-  read -e -p "Do you want to ${1}? [y/n] " -n 1
+  read -e -p "Do you want to ${1}? [y/n]> " -n 1
   if [[ $REPLY =~ ^[Yy]$ ]]; then
     true
   else
@@ -236,42 +270,36 @@ function getPassword() {
 
 
 function getAppName() {
-  echo -e "APP_NAME\n Eg. mygreatapp"
   read -e -p "Enter your APP_NAME: " -i "myapp" APP_NAME
   echo "$APP_NAME"
 }
 
 
 function getRootURL() {
-  echo -e "ROOT_URL\n Eg. http://example.com"
   read -e -p "Enter your ROOT_URL: " -i "http://${APP_NAME}.com" ROOT_URL
   echo "$ROOT_URL"
 }
 
 
 function getAppPort() {
-  echo -e "PORT\n Eg. 23456"
   read -e -p "Enter your PORT: " -i "3000" PORT
   echo "$PORT"
 }
 
 
 function getGitUrl() {
-  echo -e "GIT_URL\n Eg. git@bitbucket.org:user/repo.git"
   read -e -p "Enter your GIT_URL: " -i "git@bitbucket.org:${USER}/${APP_NAME}.git" GIT_URL
   echo "$GIT_URL"
 }
 
 
 function getGitBranch() {
-  echo -e "GIT_BRANCH\n Eg. master"
   read -e -p "Enter your GIT_BRANCH: " -i "master" GIT_BRANCH
   echo "$GIT_BRANCH"
 }
 
 
 function getMailUrl() {
-  echo -e "MAIL_URL\n Eg. smtp://postmaster@example.com:password@smtp.example.com:465\n     smtp://localhost"
   read -e -p "Enter your MAIL_URL: " -i "smtp://localhost" MAIL_URL
   echo "$MAIL_URL"
 }
@@ -354,16 +382,16 @@ function installScons() {
 function installNode() {
   # takes prefix as input
   # eg. installNode $HOME
-  pushd $1/src
-    git clone https://github.com/joyent/node.git
-    pushd node
-      export PREFIX=$1
-      sh configure
-      make
-      make install
-    popd
-    export PATH=${1}/bin:${PATH}
-    npm install -g forever mailchimp less sass
+  PREFIX=$1
+  cd $PREFIX/src
+  git clone https://github.com/joyent/node.git
+  cd node
+  ./configure --prefix=$PREFIX
+  make
+  make install
+  cd
+  export PATH=${1}/bin:${PATH}
+  npm install -g forever mailchimp less sass
   popd
   echo "Installed Node.js"
 }
@@ -456,6 +484,7 @@ function appExists() {
 function bs_createApp() {
   pyCmdStr="$( py_server_connect $USER $PASSWORD ${SERVER_NAME^} )"
   pyCmdStr+="$( py_create_app $1 )"
+  #echo "$pyCmdStr"
   pyCmd=$( python -c "${pyCmdStr}" )
   echo $pyCmd
 }
@@ -491,7 +520,9 @@ function sourceConfig() {
 
 function bootstrap() {
   PASSWORD="$(getPassword)"
+  echo
   APP_NAME="$(getAppName)"
+  APP_CONFIG_FILE="$HOME/.wfmtr/$APP_NAME.conf"
   ROOT_URL="$(getRootURL)"
   PORT=""
   GIT_URL="$(getGitUrl)"
@@ -507,34 +538,45 @@ function bootstrap() {
   MONGO_PID_FILE=$BIN_APP_DIR/mongod.pid
   MONGO_LOG_FILE=$BIN_APP_DIR/mongod.log
   MONGO_DATA_DIR=$BIN_APP_DIR/data
-  if appExists "${APP_NAME}"; then
-    echo "App exists."
-    if confirm "replace the app"; then
-      rm $HOME/.wfmtr/$APP_NAME
-      for APP in "$APP_NAME" "$BIN_APP_NAME"; do
-        bs_deleteApp "$APP"
-        bs_createApp "$APP"
-      done
-    else
-      exit 1
-    fi
-  fi
-  PORT="$(bs_appPort ${APP_NAME})"
-  MONGO_PORT="$(bs_appPort ${BIN_APP_NAME})"
-  MONGO_URL="mongodb://localhost:${MONGO_PORT}/${APP_NAME}"
   if confirm "create the app and support binaries"; then
     for APP in "$APP_NAME" "$BIN_APP_NAME"; do
-      bs_createApp "$APP"
-      pushd $HOME/webapps/$APP
+      if appExists "${APP}"; then
+        echo "App ${APP} exists."
+        echo -n "  "
+        if confirm "replace the app"; then
+          [ -f "$APP_CONFIG_FILE" ] && rm $APP_CONFIG_FILE
+          bs_deleteApp "$APP"
+          bs_createApp "$APP"
+        fi
+      else
+        echo -n "  "
+        if confirm "create $APP"; then
+          bs_createApp "$APP"
+        fi
+      fi
     done
   fi
+  PORT="$(bs_appPort ${APP_NAME})"
+  echo "App port is $PORT."
+  MONGO_PORT="$(bs_appPort ${BIN_APP_NAME})"
+  echo "Mongo port is $MONGO_PORT."
+  MONGO_URL="mongodb://localhost:${MONGO_PORT}/${APP_NAME}"
   echo -e "The following questions allow you to skip previously installed components."
   echo -e "You DO need all of them though if not previously installed."
-  [ confirm "install Node.js" ] && installNode $HOME
-  [ confirm "install MongoDB" ] && installMongo $HOME
-  [ confirm "install Meteor" ] && installMeteor $HOME
-  createPlaceholderApp $APP_NAME
-  cat > $HOME/.wfmtr/${APP_NAME}.conf <<EOL
+  if confirm "install Node.js"; then
+    installNode $HOME
+  fi
+  if confirm "install MongoDB"; then
+    installMongo $HOME
+  fi
+  if confirm "install Meteor"; then
+    installMeteor $HOME
+  fi
+  if confirm "create placeholder app"; then
+    createPlaceholderApp $APP_NAME
+  fi
+  if confirm "write config file"; then
+    cat > $APP_CONFIG_FILE <<EOL
 APP_NAME="${APP_NAME}"
 APP_DIR="${APP_DIR}"
 ROOT_URL="${ROOT_URL}"
@@ -550,8 +592,9 @@ APP_PID_FILE="${APP_PID_FILE}"
 MONGO_LOG_FILE="${MONGO_LOG_FILE}"
 MONGO_PID_FILE="${MONGO_PID_FILE}"
 EOL
-  echo -e "\nBootstrap complete."
   echo -e "Config file written to ${HOME}/.wfmtr/${APP_NAME}.conf\n"
+  fi
+  echo -e "\nBootstrap complete."
 }
 
 
