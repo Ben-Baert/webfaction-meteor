@@ -662,6 +662,9 @@ EOL
     exit 0
   fi
   popd > /dev/null
+  pushd $BIN_APP_DIR/bundle > /dev/null
+  (cd programs/server && npm install)
+  popd > /dev/null
   echo -e "Meteor app bundled and ready to go."
 }
 
@@ -704,7 +707,6 @@ function update() {
       STAMP=$(date +%s)
       tar cvf bundle.${STAMP}.tar bundle
       echo "Bundle archived to bundle.${STAMP}.tar"
-      rm -rf bundle
       popd > /dev/null
     fi
     bundle $APP_NAME
@@ -748,6 +750,9 @@ function run() {
     exit 0
   fi
   startdb $APP_NAME
+  set -a
+  . $APP_CONFIG_FILE
+  set +a
   forever restart --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js || forever start --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is running."
   exit 1
@@ -766,6 +771,9 @@ function stop() {
     exit 0
   fi
   pushd $APP_DIR > /dev/null
+  set -a
+  . $APP_CONFIG_FILE
+  set +a
   forever stop --pidfile $APP_PID_FILE -l $APP_LOG_FILE $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is stopped."
   exit 1
