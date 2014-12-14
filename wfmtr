@@ -580,9 +580,9 @@ function bootstrap() {
   FORCE_CLEAN=true
   BIN_APP_NAME="${APP_NAME}_bin"
   APP_DIR="$HOME/webapps/${APP_NAME}"
+  BIN_APP_DIR="$HOME/webapps/${BIN_APP_NAME}"
   APP_PID_FILE=$BIN_APP_DIR/forever.pid
   APP_LOG_FILE=$BIN_APP_DIR/forever.log
-  BIN_APP_DIR="$HOME/webapps/${APP_NAME}_bin"
   MONGO_PID_FILE=$BIN_APP_DIR/mongod.pid
   MONGO_LOG_FILE=$BIN_APP_DIR/mongod.log
   MONGO_DATA_DIR=$BIN_APP_DIR/data
@@ -616,6 +616,7 @@ function bootstrap() {
   fi
   if confirm "write config file"; then
     cat > $APP_CONFIG_FILE <<EOL
+APP_CONFIG_FILE="${APP_CONFIG_FILE}"
 APP_NAME="${APP_NAME}"
 APP_DIR="${APP_DIR}"
 BIN_APP_DIR="${BIN_APP_DIR}"
@@ -716,13 +717,17 @@ function update() {
 
 
 function appRunning() {
-  PID="$(cat $1)"
-  if [ -z "`ps axf | grep ${PID} | grep -v grep`" ]; then
-    true
+  if [ -f "$1" ]; then
+    PID="$(cat $1)"
+    if [ -z "`ps axf | grep ${PID} | grep -v grep`" ]; then
+      true
+    else
+      rm $APP_PID_FILE
+      rm $APP_LOG_FILE
+      false
+    fi
   else
-    rm $APP_PID_FILE
-    rm $APP_LOG_FILE
-    false
+   false
   fi
 }
 
