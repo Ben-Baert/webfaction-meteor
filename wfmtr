@@ -423,6 +423,7 @@ function installMeteor() {
   # Note: Node must already be installed!!!
   PREFIX=$1
   cd $PREFIX/src
+  rm install_meteor.sh
   wget https://install.meteor.com -O install_meteor.sh
   sed -i "s/^PREFIX=.*$/PREFIX=${PREFIX//\//\\/}/g" install_meteor.sh
   sh install_meteor.sh
