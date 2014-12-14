@@ -495,6 +495,23 @@ function bs_deleteApp() {
 }
 
 
+function bs_createWebsite() {
+  pyCmdStr="$( py_server_connect $USER $PASSWORD ${SERVER_NAME^} )"
+  pyCmdStr+="$( py_create_website $1 $2 $3 $4 )" # myGreatSite 1.1.1.1 mysite.com myGreatApp
+  #echo "$pyCmdStr"
+  pyCmd=$( python -c "${pyCmdStr}" )
+  echo $pyCmd
+}
+
+
+function bs_deleteWebsite() {
+  pyCmdStr="$( py_server_connect $USER $PASSWORD ${SERVER_NAME^} )"
+  pyCmdStr+="$( py_delete_website $1 $2 )" # myGreatSite 1.1.1.1
+  pyCmd=$( python -c "${pyCmdStr}" )
+  echo $pyCmd
+}
+
+
 function bs_appPort() {
   pyCmdStr="$( py_server_connect $USER $PASSWORD ${SERVER_NAME^} )"
   pyCmdStr+="$( py_appPort $1 )"
@@ -521,6 +538,24 @@ function bootstrap() {
   APP_NAME="$(getAppName)"
   APP_CONFIG_FILE="$HOME/.wfmtr/$APP_NAME.conf"
   ROOT_URL="$(getRootURL)"
+  # extract the protocol
+  proto="$(echo $1 | grep :// | sed -e's,^\(.*://\).*,\1,g')"
+  # remove the protocol
+  url="$(echo ${1/$proto/})"
+  # extract the user (if any)
+  user="$(echo $url | grep @ | cut -d@ -f1)"
+  # extract the host
+  host="$(echo ${url/$user@/} | cut -d/ -f1)"
+  # extract the path (if any)
+  path="$(echo $url | grep / | cut -d/ -f2-)"
+  APP_HOST="$host"
+  APP_DOMAIN="$(get_tld $host)"
+  APP_SUBDOMAIN="$(get_subdomain $host)"
+  # echo "url: $url"
+  # echo "  proto: $proto"
+  # echo "  user: $user"
+  # echo "  host: $host"
+  # echo "  path: $path"
   PORT=""
   GIT_URL="$(getGitUrl)"
   GIT_BRANCH="$(getGitBranch)"
@@ -555,9 +590,11 @@ function bootstrap() {
   fi
   PORT="$(bs_appPort ${APP_NAME})"
   echo "App port is $PORT."
+  echo
   MONGO_PORT="$(bs_appPort ${BIN_APP_NAME})"
-  echo "Mongo port is $MONGO_PORT."
   MONGO_URL="mongodb://localhost:${MONGO_PORT}/${APP_NAME}"
+  echo "Mongo port is $MONGO_PORT."
+  echo
   echo -e "The following questions allow you to skip previously installed components."
   echo -e "You DO need all of them though if not previously installed."
   if confirm "install Node.js"; then
@@ -577,6 +614,9 @@ function bootstrap() {
 APP_NAME="${APP_NAME}"
 APP_DIR="${APP_DIR}"
 ROOT_URL="${ROOT_URL}"
+APP_HOST="${APP_HOST}"
+APP_DOMAIN="${APP_DOMAIN}"
+APP_SUBDOMAIN="${APP_SUBDOMAIN}"
 PORT="${APP_PORT}"
 GIT_URL="${GIT_URL}"
 GIT_BRANCH="${GIT_BRANCH}"
@@ -620,18 +660,25 @@ EOL
 
 
 function deploy() {
+  PASSWORD="$(getPassword)"
   APP_NAME="$1"
   sourceConfig $APP_NAME
   if [ -f $APP_DIR/.git ]; then
     echo "Site exists. Did you want to update instead?"
     exit 0
   else
-    pushd $APP_DIR
-    initMeteorApp $GIT_URL
-    popd
+    if confirm "init app dir and pull from repo"; then
+      pushd $APP_DIR
+      initMeteorApp $GIT_URL
+      popd
+    fi
   fi
   if confirm "bundle app for node.js"; then
     bundle $APP_NAME
+  fi
+  if confirm "delete and create website"; then
+    bs_deleteWebsite "${APP_NAME}_site" "$IP_ADDRESS"
+    bs_createWebsite "${APP_NAME}_site" "$IP_ADDRESS" "$APP_HOST" "$APP_NAME"
   fi
   echo -e "Deployment complete. Now use wfmtr run <app name>."
 }
@@ -732,6 +779,7 @@ if [[ $# -eq 1 ]]; then
       usage simple
     ;;
   esac
+  exit 1
 fi
 
 
@@ -765,6 +813,7 @@ if [[ $# -eq 2 ]]; then
         usage complex
       ;;
     esac
+    exit 1
   fi
 else
   usage
