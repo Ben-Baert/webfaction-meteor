@@ -9,13 +9,13 @@
 function usage() {
   case "$1" in
     "simple")
-      echo -e " Usage: wfmtr [bootstrap|deploy]\n\n"
+      echo -e " Usage: wfmtr [deploy|bundle|update|run|stop|startdb] <APP NAME>"
       ;;
     "complex")
-      echo -e " Usage: wfmtr [bundle|update|run|stop|startdb] APP_NAME\n\n"
+      echo -e " Usage: wfmtr [deploy|bundle|update|run|stop|startdb] <APP NAME>"
       ;;
     *)
-      echo -e " Usage: wfmtr [bootstrap|deploy|bundle|update|run|stop|startdb]\n\n"
+      echo -e " Usage: wfmtr [deploy|bundle|update|run|stop|startdb] <APP NAME>"
       ;;
   esac
   exit 1
@@ -452,11 +452,20 @@ function createPlaceholderApp() {
 function initMeteorApp() {
   # takes repo url as input
   # eg initMeteorApp git@bitbucket.org:username/repo.git
-  git init
-  git remote add origin $1
-  git fetch
-  git reset origin/master
-  git checkout -t origin/master
+  pushd $HOME/tmp >/dev/null
+  REPO="$1"
+  APP="$2"
+  APPDIR="$HOME/webapps/$APP"
+  STAMP="$(date +%s)"
+  CLONE="${APP}-${STAMP}"
+  echo $REPO $APP $APPDIR $APPDIR $CLONE
+  if confirm "clone repo"; then
+    git clone "${REPO}" "${CLONE}"
+  fi
+  if confirm "rsync reset"; then
+    rsync -a --delete ${CLONE}/ ${APP_DIR}/
+  fi
+  popd >/dev/null
 }
 
 
@@ -464,10 +473,6 @@ function updateMeteorApp() {
   # takes repo url as input
   # eg initMeteorApp git@bitbucket.org:username/repo.git
   git pull
-  git remote add origin $1
-  git fetch
-  git reset origin/master
-  git checkout -t origin/master
 }
 
 
@@ -616,25 +621,27 @@ function bootstrap() {
   fi
   if confirm "write config file"; then
     cat > $APP_CONFIG_FILE <<EOL
-APP_CONFIG_FILE="${APP_CONFIG_FILE}"
-APP_NAME="${APP_NAME}"
-APP_DIR="${APP_DIR}"
-BIN_APP_DIR="${BIN_APP_DIR}"
-ROOT_URL="${ROOT_URL}"
-APP_HOST="${APP_HOST}"
-APP_DOMAIN="${APP_DOMAIN}"
-APP_SUBDOMAIN="${APP_SUBDOMAIN}"
-PORT="${PORT}"
-GIT_URL="${GIT_URL}"
-GIT_BRANCH="${GIT_BRANCH}"
-MAIL_URL="${MAIL_URL}"
-MONGO_URL="${MONGO_URL}"
-FORCE_CLEAN=${FORCE_CLEAN}
-NODE_ENV="production"
-APP_LOG_FILE="${APP_LOG_FILE}"
-APP_PID_FILE="${APP_PID_FILE}"
-MONGO_LOG_FILE="${MONGO_LOG_FILE}"
-MONGO_PID_FILE="${MONGO_PID_FILE}"
+export APP_CONFIG_FILE="${APP_CONFIG_FILE}"
+export APP_NAME="${APP_NAME}"
+export APP_DIR="${APP_DIR}"
+export BIN_APP_DIR="${BIN_APP_DIR}"
+export ROOT_URL="${ROOT_URL}"
+export APP_HOST="${APP_HOST}"
+export APP_DOMAIN="${APP_DOMAIN}"
+export APP_SUBDOMAIN="${APP_SUBDOMAIN}"
+export PORT=${PORT}
+export MONGO_PORT=${MONGO_PORT}
+export GIT_URL="${GIT_URL}"
+export GIT_BRANCH="${GIT_BRANCH}"
+export MAIL_URL="${MAIL_URL}"
+export MONGO_URL="${MONGO_URL}"
+export FORCE_CLEAN=${FORCE_CLEAN}
+export NODE_ENV="production"
+export APP_LOG_FILE="${APP_LOG_FILE}"
+export APP_PID_FILE="${APP_PID_FILE}"
+export MONGO_LOG_FILE="${MONGO_LOG_FILE}"
+export MONGO_PID_FILE="${MONGO_PID_FILE}"
+export MONGO_DATA_DIR="${MONGO_DATA_DIR}"
 EOL
   ln -s $APP_CONFIG_FILE $BIN_APP_DIR/$APP_NAME.conf
   echo -e "Config file written to ${HOME}/.wfmtr/${APP_NAME}.conf\n"
@@ -652,7 +659,7 @@ function bundle() {
       METEOR_SETTINGS="$(cat settings.json)"
       export METEOR_SETTINGS
       cat >> $APP_CONFIG <<EOL
-METEOR_SETTINGS=$METEOR_SETTINGS
+export METEOR_SETTINGS="$METEOR_SETTINGS"
 EOL
     fi
   fi
@@ -671,17 +678,17 @@ EOL
 
 
 function deploy() {
-  PASSWORD="$(getPassword)"
   APP_NAME="$1"
+  (
   sourceConfig $APP_NAME
+  PASSWORD="$(getPassword)"
+  echo
   if [ -f $APP_DIR/.git ]; then
     echo "Site exists. Did you want to update instead?"
     exit 0
   else
     if confirm "init app dir and pull from repo"; then
-      pushd $APP_DIR > /dev/null
-      initMeteorApp $GIT_URL
-      popd > /dev/null
+      initMeteorApp "$GIT_URL" $APP_NAME
     fi
   fi
   if confirm "bundle app for node.js"; then
@@ -692,6 +699,7 @@ function deploy() {
     bs_createWebsite "${APP_NAME}_site" "$IP_ADDRESS" "$APP_HOST" "$APP_NAME"
   fi
   echo -e "Deployment complete. Now use wfmtr run <app name>."
+ )
 }
 
 
@@ -699,15 +707,16 @@ function update() {
   APP_NAME="$1"
   sourceConfig $APP_NAME
   pushd $APP_DIR > /dev/null
-  initMeteorApp $GIT_URL
+  initMeteorApp $GIT_URL $APP_NAME
   popd > /dev/null
   if confirm "bundle app for node.js"; then
     echo -n "  "
-    if confirm "remove bundle"; then
+    if confirm "archive bundle"; then
       pushd $BIN_APP_DIR > /dev/null
       STAMP=$(date +%s)
-      tar cvf bundle.${STAMP}.tar bundle
+      tar cf bundle.${STAMP}.tar bundle
       echo "Bundle archived to bundle.${STAMP}.tar"
+      rm -rf bundle
       popd > /dev/null
     fi
     bundle $APP_NAME
@@ -734,18 +743,23 @@ function appRunning() {
 
 function startdb() {
   APP_NAME="$1"
+  (
   sourceConfig $APP_NAME
   [ ! -d $MONGO_DATA_DIR ] && mkdir -p $MONGO_DATA_DIR
   if [ -e "${MONGO_PID_FILE}" ] && (ps -u $(whoami) -opid= | grep -P "^\s*$(cat ${MONGO_PID_FILE})$" &> /dev/null); then
     echo "Already running."
     exit 99
   fi
-  PIDFILE=$MONGO_PID_FILE $HOME/bin/mongod --noauth --dbpath $MONGO_DATA_DIR --port $MONGO_PORT > $MONGO_LOG_FILE &
+  export PIDFILE=$MONGO_PID_FILE
+  $HOME/bin/mongod --noauth --dbpath $MONGO_DATA_DIR --port $MONGO_PORT > $MONGO_LOG_FILE &
+  echo "Mongo started."
+  )
 }
 
 
 function run() {
   APP_NAME="$1"
+  (
   sourceConfig "$1"
   if [ ! -d $BIN_APP_DIR/bundle ]; then
     echo "ERROR: No bundle exists! Run update or deploy."
@@ -759,30 +773,35 @@ function run() {
   # set -a
   # . $APP_CONFIG_FILE
   # set +a
-  forever restart --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js || forever start --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js
+  forever restart --pidfile $APP_PID_FILE --append \
+  -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log \
+  $BIN_APP_DIR/bundle/main.js || \
+  forever start --pidfile $APP_PID_FILE --append \
+  -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log \
+  $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is running."
-  exit 1
+  )
 }
 
 
 function stop() {
   APP_NAME="$1"
+  (
   sourceConfig "$1"
-  if [ ! -d $APP_DIR/bundle ]; then
+  if [ ! -d $BIN_APP_DIR/bundle ]; then
     echo "ERROR: No bundle exists! Run update or deploy."
     exit 0
   fi
-  if appRunning $APP_PID_FILE; then
-    echo "ERROR: App is running. PID $(cat $APP_PID_FILE)."
-    exit 0
-  fi
-  pushd $APP_DIR > /dev/null
+  #if appRunning $APP_PID_FILE; then
+  #  echo "ERROR: App is running. PID $(cat $APP_PID_FILE)."
+  #  exit 0
+  #fi
   # set -a
   # . $APP_CONFIG_FILE
   # set +a
   forever stop --pidfile $APP_PID_FILE -l $APP_LOG_FILE $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is stopped."
-  exit 1
+  )
 }
 
 
@@ -791,9 +810,6 @@ if [[ $# -eq 1 ]]; then
   case "$1" in
     "bootstrap")
       bootstrap
-    ;;
-    "deploy")
-      deploy
     ;;
     *)
       usage simple
@@ -810,6 +826,9 @@ if [[ $# -eq 2 ]]; then
   else
     APP_NAME="$2"
     case "$1" in
+      "deploy")
+        deploy ${APP_NAME}
+      ;;
       "bundle")
         bundle ${APP_NAME}
       ;;
