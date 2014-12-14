@@ -12,10 +12,10 @@ function usage() {
       echo -e " Usage: wfmtr [bootstrap|deploy]\n\n"
       ;;
     "complex")
-      echo -e " Usage: wfmtr [update|run|stop|startdb] APP_NAME\n\n"
+      echo -e " Usage: wfmtr [bundle|update|run|stop|startdb] APP_NAME\n\n"
       ;;
     *)
-      echo -e " Usage: wfmtr [bootstrap|deploy|update|run|stop|startdb]\n\n"
+      echo -e " Usage: wfmtr [bootstrap|deploy|bundle|update|run|stop|startdb]\n\n"
       ;;
   esac
   exit 1
@@ -589,42 +589,75 @@ APP_PID_FILE="${APP_PID_FILE}"
 MONGO_LOG_FILE="${MONGO_LOG_FILE}"
 MONGO_PID_FILE="${MONGO_PID_FILE}"
 EOL
+  ln -s $APP_CONFIG_FILE $BIN_APP_DIR/$APP_NAME.conf
   echo -e "Config file written to ${HOME}/.wfmtr/${APP_NAME}.conf\n"
   fi
   echo -e "\nBootstrap complete."
 }
 
 
+function bundle() {
+  APP_NAME="$1"
+  sourceConfig $APP_NAME
+  pushd $APP_DIR
+  if [ -f settings.json ]; then
+    if confirm "use your settings.json"; then
+      METEOR_SETTINGS="$(cat settings.json)"
+      export METEOR_SETTINGS
+      cat >> $APP_CONFIG <<EOL
+METEOR_SETTINGS=$METEOR_SETTINGS
+EOL
+    fi
+  fi
+  meteor install
+  meteor bundle $BIN_APP_DIR/bundle.tgz
+  popd
+  pushd $BIN_APP_DIR
+  tar xvzf bundle.tgz
+  rm -f bundle.tgz
+  echo -e "Meteor app bundled and ready to go."
+}
+
+
 function deploy() {
   APP_NAME="$1"
-  APP_CONFIG=$HOME/.wfmtr/${APP_NAME}.conf
-  if [ -f $APP_CONFIG ]; then
-    source $HOME/wfmtr/${APP_NAME}.conf
-  else
-    echo "ERROR: Config file missing!"
-    exit 0
-  fi
+  sourceConfig $APP_NAME
   if [ -f $APP_DIR/.git ]; then
     echo "Site exists. Did you want to update instead?"
     exit 0
   else
     pushd $APP_DIR
     initMeteorApp $GIT_URL
-    if [ -f settings.json ]; then
-      if confirm "use your settings.json"; then
-        cat >> $APP_CONFIG <<EOL
-METEOR_SETTINGS="$(cat settings.json)"
-EOL
-      fi
-    fi
-    meteor install
-    meteor bundle bundle.tgz
-    tar xvzf bundle.tgz
-    rm -f bundle.tgz
+    popd
+  fi
+  if confirm "bundle app for node.js"; then
+    bundle $APP_NAME
   fi
   echo -e "Deployment complete. Now use wfmtr run <app name>."
 }
 
+
+function update() {
+  APP_NAME="$1"
+  sourceConfig $APP_NAME
+  pushd $APP_DIR
+  initMeteorApp $GIT_URL
+  popd
+  fi
+  if confirm "bundle app for node.js"; then
+    echo -n "  "
+    if confirm "remove bundle"; then
+      pushd $BIN_APP_DIR
+      STAMP=$(date +%s)
+      tar cvf bundle.${STAMP}.tar bundle
+      echo "Bundle archived to bundle.${STAMP}.tar"
+      rm -rf bundle
+      popd
+    fi
+    bundle $APP_NAME
+  fi
+  echo -e "Update complete. Now use wfmtr restart <app name>."
+}
 
 
 function appRunning() {
@@ -641,7 +674,7 @@ function appRunning() {
 
 function startdb() {
   APP_NAME="$1"
-  sourceConfig "$1"
+  sourceConfig $APP_NAME
   if [ -e "${MONGO_PID_FILE}" ] && (ps -u $(whoami) -opid= | grep -P "^\s*$(cat ${MONGO_PID_FILE})$" &> /dev/null); then
     echo "Already running."
     exit 99
@@ -662,8 +695,8 @@ function run() {
     exit 0
   fi
   pushd $APP_DIR
-
-  forever restart --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $APP_DIR/bundle/main.js || forever start --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $APP_DIR/bundle/main.js
+  startdb $APP_NAME
+  forever restart --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js || forever start --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is running."
   exit 1
 }
@@ -681,7 +714,7 @@ function stop() {
     exit 0
   fi
   pushd $APP_DIR
-  forever stop --pidfile $APP_PID_FILE -l $APP_LOG_FILE $APP_DIR/bundle/main.js
+  forever stop --pidfile $APP_PID_FILE -l $APP_LOG_FILE $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is stopped."
   exit 1
 }
@@ -710,8 +743,10 @@ if [[ $# -eq 2 ]]; then
   else
     APP_NAME="$2"
     case "$1" in
+      "bundle")
+        bundle ${APP_NAME}
+      ;;
       "update")
-        echo -n "Updating ${APP_NAME}: "
         update ${APP_NAME}
       ;;
       "run")
@@ -721,7 +756,8 @@ if [[ $# -eq 2 ]]; then
         stop ${APP_NAME}
       ;;
       "restart")
-        restart ${APP_NAME}
+        stop ${APP_NAME}
+        run ${APP_NAME}
       ;;
       "startdb")
         startdb ${APP_NAME}
