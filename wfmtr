@@ -525,6 +525,20 @@ function bs_appPort() {
   echo $pyCmd
 }
 
+function bs_dependencies() {
+  echo -e "You may have already installed these so skip as you feel necessary."
+  echo -e "You DO need all of them though if not previously installed."
+  if confirm "install Node.js"; then
+    installNode $HOME
+  fi
+  if confirm "install MongoDB"; then
+    installMongo $HOME
+  fi
+  if confirm "install Meteor"; then
+    installMeteor $HOME
+  fi
+}
+
 
 function sourceConfig() {
   APP_NAME="$1"
@@ -539,6 +553,9 @@ function sourceConfig() {
 
 
 function bootstrap() {
+  echo "Let's get started..."
+  bs_dependencies
+  echo -e "Now the real business...\n"
   PASSWORD="$(getPassword)"
   echo
   APP_NAME="$(getAppName)"
@@ -601,17 +618,6 @@ function bootstrap() {
   MONGO_URL="mongodb://localhost:${MONGO_PORT}/${APP_NAME}"
   echo "Mongo port is $MONGO_PORT."
   echo
-  echo -e "The following questions allow you to skip previously installed components."
-  echo -e "You DO need all of them though if not previously installed."
-  if confirm "install Node.js"; then
-    installNode $HOME
-  fi
-  if confirm "install MongoDB"; then
-    installMongo $HOME
-  fi
-  if confirm "install Meteor"; then
-    installMeteor $HOME
-  fi
   if confirm "create placeholder app"; then
     createPlaceholderApp $APP_NAME
   fi
