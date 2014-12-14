@@ -1,0 +1,697 @@
+#!/usr/bin/env bash
+#
+# wfmtr
+# Webfaction M&M Stack
+# Mongo/Node/Meteor Install/Deploy/Run Script
+#
+
+
+function usage() {
+  case "$1" in
+    "simple")
+      echo -e " Usage: $0 [bootstrap|deploy]\n\n"
+      ;;
+    "complex")
+      echo -e " Usage: $0 [update|run|stop|startdb] APP_NAME\n\n"
+      ;;
+    *)
+      echo -e " Usage: $0 [bootstrap|deploy|update|run|stop|startdb]\n\n"
+      ;;
+  esac
+  exit 1
+}
+
+
+# NODE DIST INFORMATION
+NODE_VERSION="0.10.33"
+NODE_DL_URL="http://nodejs.org/dist/v{node_version}/node-v${NODE_VERSION}.tar.gz"
+NODE_REPO="http://mirrors.kernel.org/fedora-epel/6/${ARCH}"
+NODE_RPMS=( "nodejs-0.10.32-1.el6.${ARCH}.rpm" "npm-1.3.6-5.el6.noarch.rpm" )
+
+
+# MONGO DIST INFORMATION
+MONGO_VERSION="2.6.6"
+MONGO_PREFIX="mongodb-linux-x86_64"
+MONGO_DIR="${MONGO_PREFIX}-${MONGO_VERSION}"
+MONGO_TARBALL="${MONGO_PREFIX}-${MONGO_VERSION}.tgz"
+MONGO_DL_URL="http://downloads.mongodb.org/linux/${MONGO_TARBALL}"
+MONGO_REPO="http://downloads-distro.mongodb.org/repo/redhat/os/${ARCH}/RPMS"
+MONGO_RPM_PREFIX="mongodb-org-"
+MONGO_RPMS=( "mongos" "tools" "server" "shell" )
+
+
+# SYSTEM INFORMATION
+CWD=$(pwd)
+ARCH=`arch`
+IP_ADDRESS=`ip addr | grep 'state UP' -A2 | tail -n1 | awk '{print $2}' | cut -f1  -d'/'`
+SERVER_DOMAIN=`hostname -d`
+SERVER_NAME=`hostname -s`
+SERVER_NAME=${SERVER_NAME^}
+SERVER_FQDN=`hostname -f`
+
+
+# WEBFACTION PYTHON API WRAPPERS
+# ------------------------------------------------------------------------------------------
+
+function py_server_connect() {
+  # takes username, password, server as input
+  # eg. py_server_connect bob secret Web333
+  echo "import xmlrpclib"
+  echo "server=xmlrpclib.ServerProxy('https://api.webfaction.com/')"
+  echo "session_id, account=server.login(${1},${2},${3^})"
+}
+
+
+function py_create_app() {
+  # takes app name as input
+  # eg. py_delete_app myGreatApp
+  echo "server.create_app(session_id, '$1', 'custom_app_with_port')"
+}
+
+
+function py_appExists() {
+  # takes app name as string
+  # eg. py_appExists myGreatApp
+  echo "print 1 if any(app['name']=='$1' for app in server.list_apps(session_id)) else 0"
+}
+
+
+function py_appPort() {
+  # takes app name as input
+  # eg. py_appPort myGreatApp
+  echo "print ([app['port'] for app in server.list_apps(session_id) if app['name']=='$1'] or [0])[0]"
+}
+
+
+function py_delete_app() {
+  # takes app name as input
+  # eg. py_delete_app myGreatApp
+  echo "server.delete_app(session_id,'$1')"
+}
+
+
+function py_create_domain() {
+  # takes tld, subdomain as input
+  # eg. py_create_domain mysite.com www
+  echo "server.create_domain(session_id, '$1', '$2')"
+}
+
+
+function py_domainExists() {
+  # takes tld as string
+  # eg. py_domainExists mysite.com
+  echo "print 1 if any(tld['domain']=='$1' for tld in server.list_domains(session_id)) else 0"
+}
+
+
+function py_subdomainExists() {
+  # takes subdomain and fqdn as string
+  # eg. py_subdomainExists www mysite.com
+  echo "print 1 if ('$1' in ([domain['subdomains'] for domain in server.list_domains(session_id) if domain['domain']=='$2'] or ['randomstring'])[0]) else 0"
+}
+
+
+function py_create_website() {
+  # takes site name, ip, one domain, appname as input
+  # eg. py_create_website myGreatSite 1.1.1.1 mysite.com myGreatApp
+  echo "server.create_website(session_id, '$1', '$2', False, ['$3'], ['$4', '/'])"
+}
+
+
+function py_websiteExists() {
+  # takes app name as string
+  # eg. py_appExists myGreatApp
+  echo "print 1 if any(website['name']=='$1' for website in server.list_apps(session_id)) else 0"
+}
+
+
+function py_delete_website() {
+  # takes site name, ip as input
+  # eg. py_delete_website myGreatSite 1.1.1.1
+  echo "server.delete_website(session_id, '$1', '$2', False)"
+}
+
+
+# UTILITY FUNCTIONS
+# ------------------------------------------------------------------------------------------
+
+function is_dir() {
+  if [ -d "$1" ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+
+function is_var() {
+  # input should be like $MY_VAR
+  if [ -n "$1" ]; then
+    return 1
+  else
+    return 0
+  fi
+}
+
+
+function get_tld() {
+  # input is fqdn
+  # eg. get_tld www.mysite.com
+  #     returns mysite.com
+  echo $1 | sed -r 's/(.*)(\.)([^.]+\.[^.]+)$/\3/'
+}
+
+
+function get_subdomain() {
+  # input is fqdn
+  # eg. get_tld www.mysite.com
+  #     returns www
+  echo $1 | sed -r 's/(.*)(\.)([^.]+\.[^.]+)$/\1/'
+}
+
+
+function extractRPMs() {
+  for $RPM in rpms/*.rpm; do
+    rpm2cpio ${RPM} | cpio -idmv
+  done
+}
+
+
+function updatePath() {
+  # updates PATH and rehash
+  # eg. updatePath myGreatApp
+  APPBIN=$HOME/webapps/$1/bin
+  APPLIB=$HOME/webapps/$1/var/lib
+  echo 'export PATH=${APPBIN}:${PATH}' >> ~/.bashrc
+  echo 'export LD_LIBRARY_PATH=${APPLIB}:${LD_LIBRARY_PATH}' >> ~/.bashrc
+  hash -r
+}
+
+
+function joinLines() {
+  # takes a bunch of strings
+  # and joins them on new lines
+  # eg joinLines "string" "$(function)" "# end"
+  # Note: to retain the new line you must quote when echoing
+  stringArray=(${@})
+  retStr=$( IFS=$'\n'; echo "${stringArray[*]}" )
+  echo "$retStr"
+}
+
+
+function confirm() {
+  # takes an action description as input
+  # eg. confirmAction "melt butter"
+  #     Do you want to melt butter? [y/N]
+  # if confirm "melt butter"; then
+  #  echo "Melting butter."
+  # else
+  #  echo "Doing Nothing"
+  # fi
+  read -e -p "Do you want to ${1}? [y/n] " -n 1
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    true
+  else
+    false
+  fi
+}
+
+
+
+# GETTER FUNCTIONS
+# ------------------------------------------------------------------------------------------
+
+function getPassword() {
+  unset PASSWORD
+  prompt="Enter your PASSWORD: "
+  while IFS= read -p "$prompt" -r -s -n 1 char; do
+    if [[ $char == $'\0' ]]; then
+      break
+    fi
+    prompt='*'
+    PASSWORD+="$char"
+  done
+  echo "$PASSWORD"
+}
+
+
+function getAppName() {
+  echo -e "APP_NAME\n Eg. mygreatapp"
+  read -e -p "Enter your APP_NAME: " -i "myapp" APP_NAME
+  echo "$APP_NAME"
+}
+
+
+function getRootURL() {
+  echo -e "ROOT_URL\n Eg. http://example.com"
+  read -e -p "Enter your ROOT_URL: " -i "http://${APP_NAME}.com" ROOT_URL
+  echo "$ROOT_URL"
+}
+
+
+function getAppPort() {
+  echo -e "PORT\n Eg. 23456"
+  read -e -p "Enter your PORT: " -i "3000" PORT
+  echo "$PORT"
+}
+
+
+function getGitUrl() {
+  echo -e "GIT_URL\n Eg. git@bitbucket.org:user/repo.git"
+  read -e -p "Enter your GIT_URL: " -i "git@bitbucket.org:${USER}/${APP_NAME}.git" GIT_URL
+  echo "$GIT_URL"
+}
+
+
+function getGitBranch() {
+  echo -e "GIT_BRANCH\n Eg. master"
+  read -e -p "Enter your GIT_BRANCH: " -i "master" GIT_BRANCH
+  echo "$GIT_BRANCH"
+}
+
+
+function getMailUrl() {
+  echo -e "MAIL_URL\n Eg. smtp://postmaster@example.com:password@smtp.example.com:465\n     smtp://localhost"
+  read -e -p "Enter your MAIL_URL: " -i "smtp://localhost" MAIL_URL
+  echo "$MAIL_URL"
+}
+
+
+function getMongoUrl() {
+  read -e -p "Enter your MONGO_URL: " -i "mongodb://localhost:${MONGO_PORT}/${APP_NAME}" MONGO_URL
+  echo "$MONGO_URL"
+}
+
+
+# MAIN FUNCTIONS
+# ------------------------------------------------------------------------------------------
+
+
+function downloadMongoRPMs() {
+  mkdir $MONGO_APP_DIR/dist
+  pushd $MONGO_APP_DIR/dist
+  for RPM in "${MONGO_RPMS[@]}";do
+    RPM_FILENAME=${MONGO_RPM_PREFIX}-${$RPM}-${MONGO_VERSION}.${ARCH}.rpm
+    URL=${MONGO_REPO}/${RPM_FILENAME}
+    wget $URL
+  done
+  popd
+}
+
+
+function downloadNodeRPMs() {
+  mkdir $NODE_APP_DIR/dist
+  pushd $NODE_APP_DIR/dist
+  for RPM in "${NODE_RPMS[@]}";do
+    URL=${NODE_REPO}/${RPM}
+    wget $URL
+  done
+  popd
+}
+
+
+function initEnv() {
+  USER_BIN="$HOME/bin"
+  USER_WFMTR="$HOME/.wfmtr"
+  REQDIRS=( "bin" "lib" "tmp" "src" "include" "lib/pkgconfig" )
+  for REQDIR in "${REQDIRS[@]}"; do
+    [[ -d "$REQDIR" ]] || mkdir $USER_BIN
+  done
+  if [[ ":$PATH:" != *":$USER_BIN:"* ]]; then
+    echo "PATH=\$PATH:$USER_BIN">>~/.bashrc
+    echo "export \$PATH">>~/.bashrc
+  fi
+  hash -r
+}
+
+
+function installScons() {
+  (
+  export TMPDIR=$HOME/tmp
+  export PATH="$HOME/bin:$PATH"
+  export C_INCLUDE_PATH="$HOME/include:$C_INCLUDE_PATH"
+  export LIBRARY_PATH="$HOME/lib:$LIBRARY_PATH"
+  export LD_LIBRARY_PATH="$HOME/lib:$LD_LIBRARY_PATH"
+  export PKG_CONFIG_PATH=$HOME/lib/pkgconfig
+  export PYTHON=/usr/local/bin/python2.7
+  cd ~/src
+  wget http://sourceforge.net/projects/boost/files/boost/1.55.0/boost_1_55_0.tar.gz
+  tar zxf boost_1_55_0.tar.gz
+  pushd boost_1_55_0
+    ./bootstrap.sh
+    ./b2 install --prefix=$HOME
+  popd
+  wget http://sourceforge.net/projects/scons/files/scons/2.3.1/scons-2.3.1.tar.gz
+  tar zxf scons-2.3.1.tar.gz
+  pushd scons-2.3.1
+    python2.7 setup.py install
+  popd
+  exit 1
+  )
+}
+
+
+function installNode() {
+  # takes prefix as input
+  # eg. installNode $HOME
+  pushd $1/src
+    git clone https://github.com/joyent/node.git
+    pushd node
+      export PREFIX=$1
+      sh configure
+      make
+      make install
+    popd
+    export PATH=${1}/bin:${PATH}
+    npm install -g forever mailchimp less sass
+  popd
+  echo "Installed Node.js"
+}
+
+
+function installMongo() {
+  pushd $1/src
+    wget $MONGO_DL_URL
+    tar zxf $MONGO_TARBALL
+    pushd $MONGO_DIR/bin
+      for MNGBIN in *; do
+        [ ! -f $HOME/bin/$MNGBIN ] && cp $MNGBIN $HOME/bin/
+      done
+      popd
+  popd
+}
+
+
+function compileMongo() {
+  command -v scons >/dev/null 2>&1 || installScons
+  pushd $1/src
+    wget https://fastdl.mongodb.org/src/mongodb-src-r2.4.12.tar.gz
+    tar zxf mongodb-src-r2.4.12.tar.gz
+    scons install --64 --ssl --prefix="${1}"
+  popd
+  echo "Installed MongoDB"
+}
+
+
+function installMeteor() {
+  # takes prefix as input
+  # eg. installMeteor $HOME/webapps/myGreatApp
+  # Note: Node must already be installed!!!
+  pushd $1/src
+    wget https://install.meteor.com -O install_meteor.sh
+    sed -i 's/^PREFIX=.*$/PREFIX=${1}/g' install_meteor.sh
+    sh install_meteor.sh
+  popd
+}
+
+
+function createPlaceholderApp() {
+  APP_NAME=$1
+  APP_DIR=$HOME/webapps/$APP_NAME
+  cd $HOME/tmp
+  meteor create $APP_NAME
+  rsync -av $APP_NAME/ $APP_DIR/
+}
+
+
+function initMeteorApp() {
+  # takes repo url as input
+  # eg initMeteorApp git@bitbucket.org:username/repo.git
+  git init
+  git remote add origin $1
+  git fetch
+  git reset origin/master
+  git checkout -t origin/master
+}
+
+
+function updateMeteorApp() {
+  # takes repo url as input
+  # eg initMeteorApp git@bitbucket.org:username/repo.git
+  git pull
+  git remote add origin $1
+  git fetch
+  git reset origin/master
+  git checkout -t origin/master
+}
+
+
+function configExists() {
+  if [ -d "$HOME/.wfmtr/$1" ]; then
+    true
+  else
+    false
+  fi
+}
+
+function appExists() {
+  if [ -d "$HOME/webapps/$1" ]; then
+    true
+  else
+    false
+  fi
+}
+
+
+function bs_createApp() {
+  pyCmdStr="$( py_server_connect $USER $PASSWORD ${SERVER_NAME^} )"
+  pyCmdStr+="$( py_create_app $1 )"
+  pyCmd=$( python -c "${pyCmdStr}" )
+  echo $pyCmd
+}
+
+
+function bs_deleteApp() {
+  pyCmdStr="$( py_server_connect $USER $PASSWORD ${SERVER_NAME^} )"
+  pyCmdStr+="$( py_delete_app $1 )"
+  pyCmd=$( python -c "${pyCmdStr}" )
+  echo $pyCmd
+}
+
+
+function bs_appPort() {
+  pyCmdStr="$( py_server_connect $USER $PASSWORD ${SERVER_NAME^} )"
+  pyCmdStr+="$( py_appPort $1 )"
+  pyCmd=$( python -c "${pyCmdStr}" )
+  echo $pyCmd
+}
+
+
+function sourceConfig() {
+  APP_NAME="$1"
+  APP_CONFIG=$HOME/.wfmtr/${APP_NAME}.conf
+  if [ -f $APP_CONFIG ]; then
+    source $HOME/wfmtr/${APP_NAME}.conf
+  else
+    echo "ERROR: Config file missing!"
+    exit 0
+  fi
+}
+
+
+function bootstrap() {
+  PASSWORD="$(getPassword)"
+  APP_NAME="$(getAppName)"
+  ROOT_URL="$(getRootURL)"
+  PORT=""
+  GIT_URL="$(getGitUrl)"
+  GIT_BRANCH="$(getGitBranch)"
+  MAIL_URL="$(getMailUrl)"
+  MONGO_URL=""
+  FORCE_CLEAN=true
+  BIN_APP_NAME="${APP_NAME}_bin"
+  APP_DIR="$HOME/webapps/${APP_NAME}"
+  APP_PID_FILE=$BIN_APP_DIR/forever.pid
+  APP_LOG_FILE=$BIN_APP_DIR/forever.log
+  BIN_APP_DIR="$HOME/webapps/${APP_NAME}_bin"
+  MONGO_PID_FILE=$BIN_APP_DIR/mongod.pid
+  MONGO_LOG_FILE=$BIN_APP_DIR/mongod.log
+  MONGO_DATA_DIR=$BIN_APP_DIR/data
+  if appExists "${APP_NAME}"; then
+    echo "App exists."
+    if confirm "replace the app"; then
+      rm $HOME/.wfmtr/$APP_NAME
+      for APP in "$APP_NAME" "$BIN_APP_NAME"; do
+        bs_deleteApp "$APP"
+        bs_createApp "$APP"
+      done
+    else
+      exit 1
+    fi
+  fi
+  PORT="$(bs_appPort ${APP_NAME})"
+  MONGO_PORT="$(bs_appPort ${BIN_APP_NAME})"
+  MONGO_URL="mongodb://localhost:${MONGO_PORT}/${APP_NAME}"
+  if confirm "create the app and support binaries"; then
+    for APP in "$APP_NAME" "$BIN_APP_NAME"; do
+      bs_createApp "$APP"
+      pushd $HOME/webapps/$APP
+    done
+  fi
+  echo -e "The following questions allow you to skip previously installed components."
+  echo -e "You DO need all of them though if not previously installed."
+  [ confirm "install Node.js" ] && installNode $HOME
+  [ confirm "install MongoDB" ] && installMongo $HOME
+  [ confirm "install Meteor" ] && installMeteor $HOME
+  createPlaceholderApp $APP_NAME
+  cat > $HOME/.wfmtr/${APP_NAME}.conf <<EOL
+APP_NAME="${APP_NAME}"
+APP_DIR="${APP_DIR}"
+ROOT_URL="${ROOT_URL}"
+PORT="${APP_PORT}"
+GIT_URL="${GIT_URL}"
+GIT_BRANCH="${GIT_BRANCH}"
+MAIL_URL="${MAIL_URL}"
+MONGO_URL="${MONGO_URL}"
+FORCE_CLEAN=${FORCE_CLEAN}
+NODE_ENV="production"
+APP_LOG_FILE="${APP_LOG_FILE}"
+APP_PID_FILE="${APP_PID_FILE}"
+MONGO_LOG_FILE="${MONGO_LOG_FILE}"
+MONGO_PID_FILE="${MONGO_PID_FILE}"
+EOL
+  echo -e "\nBootstrap complete."
+  echo -e "Config file written to ${HOME}/.wfmtr/${APP_NAME}.conf\n"
+}
+
+
+function deploy() {
+  APP_NAME="$1"
+  APP_CONFIG=$HOME/.wfmtr/${APP_NAME}.conf
+  if [ -f $APP_CONFIG ]; then
+    source $HOME/wfmtr/${APP_NAME}.conf
+  else
+    echo "ERROR: Config file missing!"
+    exit 0
+  fi
+  if [ -f $APP_DIR/.git ]; then
+    echo "Site exists. Did you want to update instead?"
+    exit 0
+  else
+    pushd $APP_DIR
+    initMeteorApp $GIT_URL
+    if [ -f settings.json ]; then
+      if confirm "use your settings.json"; then
+        cat >> $APP_CONFIG <<EOL
+METEOR_SETTINGS="$(cat settings.json)"
+EOL
+      fi
+    fi
+    meteor install
+    meteor bundle bundle.tgz
+    tar xvzf bundle.tgz
+    rm -f bundle.tgz
+  fi
+  echo -e "Deployment complete. Now use wfmtr run <app name>."
+}
+
+
+
+function appRunning() {
+  PID="$(cat $1)"
+  if [ -z "`ps axf | grep ${PID} | grep -v grep`" ]; then
+    true
+  else
+    rm $APP_PID_FILE
+    rm $APP_LOG_FILE
+    false
+  fi
+}
+
+
+function startdb() {
+  APP_NAME="$1"
+  sourceConfig "$1"
+  if [ -e "${MONGO_PID_FILE}" ] && (ps -u $(whoami) -opid= | grep -P "^\s*$(cat ${MONGO_PID_FILE})$" &> /dev/null); then
+    echo "Already running."
+    exit 99
+  fi
+  $HOME/bin/mongod --noauth --dbpath $MONGO_DATA_DIR --port $MONGO_PORT > $MONGO_LOG_FILE &
+}
+
+
+function run() {
+  APP_NAME="$1"
+  sourceConfig "$1"
+  if [ ! -d $APP_DIR/bundle ]; then
+    echo "ERROR: No bundle exists! Run update or deploy."
+    exit 0
+  fi
+  if appRunning $APP_PID_FILE; then
+    echo "ERROR: App is running. PID $(cat $APP_PID_FILE)."
+    exit 0
+  fi
+  pushd $APP_DIR
+
+  forever restart --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $APP_DIR/bundle/main.js || forever start --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $APP_DIR/bundle/main.js
+  echo -e "Application $APP_NAME is running."
+  exit 1
+}
+
+
+function stop() {
+  APP_NAME="$1"
+  sourceConfig "$1"
+  if [ ! -d $APP_DIR/bundle ]; then
+    echo "ERROR: No bundle exists! Run update or deploy."
+    exit 0
+  fi
+  if appRunning $APP_PID_FILE; then
+    echo "ERROR: App is running. PID $(cat $APP_PID_FILE)."
+    exit 0
+  fi
+  pushd $APP_DIR
+  forever stop --pidfile $APP_PID_FILE -l $APP_LOG_FILE $APP_DIR/bundle/main.js
+  echo -e "Application $APP_NAME is stopped."
+  exit 1
+}
+
+
+[[ $# -eq 0 ]] && usage
+if [[ $# -eq 1 ]]; then
+  case "$1" in
+    "bootstrap")
+      bootstrap
+    ;;
+    "deploy")
+      deploy
+    ;;
+    *)
+      usage simple
+    ;;
+  esac
+fi
+
+
+if [[ $# -eq 2 ]]; then
+  if [ ! -d $HOME/webapps/$2 ]; then
+    echo "Site does not exist."
+    exit 1
+  else
+    APP_NAME="$2"
+    case "$1" in
+      "update")
+        echo -n "Updating ${APP_NAME}: "
+        update ${APP_NAME}
+      ;;
+      "run")
+        run ${APP_NAME}
+      ;;
+      "stop")
+        stop ${APP_NAME}
+      ;;
+      "restart")
+        restart ${APP_NAME}
+      ;;
+      "startdb")
+        startdb ${APP_NAME}
+      ;;
+      *)
+        usage complex
+      ;;
+    esac
+  fi
+else
+  usage
+fi
+
