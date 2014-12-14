@@ -217,6 +217,7 @@ function updatePath() {
   NEWPATH=$1
   if [[ ":$PATH:" != *":$NEWPATH:"* ]]; then
   echo 'export PATH=${NEWPATH}:${PATH}' >> ~/.bashrc
+  fi
   hash -r
 }
 
@@ -420,10 +421,11 @@ function installMeteor() {
   # takes prefix as input
   # eg. installMeteor $HOME/webapps/myGreatApp
   # Note: Node must already be installed!!!
-  cd $1/src
-    wget https://install.meteor.com -O install_meteor.sh
-    sed -i 's/^PREFIX=.*$/PREFIX=${1}/g' install_meteor.sh
-    sh install_meteor.sh
+  PREFIX=$1
+  cd $PREFIX/src
+  wget https://install.meteor.com -O install_meteor.sh
+  sed -i "s/^PREFIX=.*$/PREFIX=${PREFIX//\//\\/}/g" install_meteor.sh
+  sh install_meteor.sh
   cd
 }
 
