@@ -735,11 +735,12 @@ function appRunning() {
 function startdb() {
   APP_NAME="$1"
   sourceConfig $APP_NAME
+  [ ! -d $MONGO_DATA_DIR ] && mkdir -p $MONGO_DATA_DIR
   if [ -e "${MONGO_PID_FILE}" ] && (ps -u $(whoami) -opid= | grep -P "^\s*$(cat ${MONGO_PID_FILE})$" &> /dev/null); then
     echo "Already running."
     exit 99
   fi
-  $HOME/bin/mongod --noauth --dbpath $MONGO_DATA_DIR --port $MONGO_PORT > $MONGO_LOG_FILE &
+  PIDFILE=$MONGO_PID_FILE $HOME/bin/mongod --noauth --dbpath $MONGO_DATA_DIR --port $MONGO_PORT > $MONGO_LOG_FILE &
 }
 
 
@@ -755,9 +756,9 @@ function run() {
     exit 0
   fi
   startdb $APP_NAME
-  set -a
-  . $APP_CONFIG_FILE
-  set +a
+  # set -a
+  # . $APP_CONFIG_FILE
+  # set +a
   forever restart --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js || forever start --pidfile $APP_PID_FILE -l $APP_LOG_FILE -o $BIN_APP_DIR/out.log -e $BIN_APP_DIR/err.log $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is running."
   exit 1
@@ -776,9 +777,9 @@ function stop() {
     exit 0
   fi
   pushd $APP_DIR > /dev/null
-  set -a
-  . $APP_CONFIG_FILE
-  set +a
+  # set -a
+  # . $APP_CONFIG_FILE
+  # set +a
   forever stop --pidfile $APP_PID_FILE -l $APP_LOG_FILE $BIN_APP_DIR/bundle/main.js
   echo -e "Application $APP_NAME is stopped."
   exit 1
@@ -837,4 +838,5 @@ if [[ $# -eq 2 ]]; then
 else
   usage
 fi
+
 
