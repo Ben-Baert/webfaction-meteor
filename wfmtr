@@ -384,7 +384,9 @@ function installNode() {
   PREFIX=$1
   cd $PREFIX/src
   [ -d "node" ] && rm -rf node
-  git clone https://github.com/joyent/node.git
+  wget http://nodejs.org/dist/v0.10.33/node-v0.10.33.tar.gz
+  tar zxf node-v0.10.33.tar.gz
+  # git clone https://github.com/joyent/node.git
   cd node
   ./configure --prefix=$PREFIX
   make
