@@ -643,7 +643,6 @@ function update() {
   pushd $APP_DIR
   initMeteorApp $GIT_URL
   popd
-  fi
   if confirm "bundle app for node.js"; then
     echo -n "  "
     if confirm "remove bundle"; then
