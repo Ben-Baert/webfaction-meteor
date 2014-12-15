@@ -61,6 +61,17 @@ In detail, the `wfmtr` bash script does the following:
 
 > **in the process of writing this**
 
+
+## Broken Things
+
+The following *features* aren't working at the moment and need some collaborative love in the form of suggestions, pull requests or time on my part. Log an issue and it'll be top of mind.
+
+ * mongo isn't tested as my current app doesn't use it
+ * domains and subdomains aren't working reliably so for now create the domains manually in the control panel
+ * `deploy` works but you'll get errors about the domain not existing or site not existing
+ * need to consolidate the deploy and bundle steps - maybe just one step or an update step that works more intuitively
+
+
 ## Structuring your app
 
 If you want to use the deploy tool you'll need to make sure your meteor app runs from the root of your repo, not a subdirectory. This is pretty standard but worth mentioning.
