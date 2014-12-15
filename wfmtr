@@ -660,12 +660,13 @@ function bundle() {
       METEOR_SETTINGS="$(cat settings.json)"
       export METEOR_SETTINGS
       cat >> $APP_CONFIG <<EOL
-export METEOR_SETTINGS="$(cat ${SETTINGS_JSON})"
+export METEOR_SETTINGS="\$(cat ${SETTINGS_JSON})"
 EOL
     echo "Note: currently there's a bug here where the settings get written multiple times."
-    echo "      It's not a big deal but if you want to do some housekeeping then remove the duplicates manuallu."
+    echo "      It's not a big deal but if you want to do some housekeeping then remove the duplicates manually."
     fi
   fi
+  echo "Note: If you changed your settings.json you need to STOP forever to get the new environment."
   if confirm "bundle the app $APP_NAME"; then
     meteor build --directory $BIN_APP_DIR
   else
