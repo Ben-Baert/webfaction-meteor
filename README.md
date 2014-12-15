@@ -6,6 +6,27 @@ This project provides the `wfmtr` shell script for deploying M&amp;M stack (Mong
 
 > NOTE: This project is working mostly. I've deployed one app with it and refining. Please fork and submit pull requests.
 
+## What it does
+
+The install script does the following:
+
+ * creates a `$HOME/bin` directory if it doesn't exist to store localized binaries (node, npm, meteor, mongod, mongo etc.)
+ * creates a `$HOME/.wfmtr` directory if it doesn't exist to store configurations
+ * checks your current `$PATH` for your home bin directory and adds an export statement if necessary
+ * copies the `wfmtr` script to your bin directory and makes it executable
+ 
+The `wfmtr` bash script does the following:
+
+ #### `bootstrap`
+
+ * prompts to install (Node.js)[http://nodejs.org] to your `$HOME/bin` directory
+   * uses `--prefix=$HOME` so you can find `node_modules` in `$HOME/lib`
+ * prompts to install (MongoDB)[http://mongodb.org] to your `$HOME/bin` directory
+   * uses the compiled binaries for Linux x86_64 so you should be on a 64 bit machine (most new ones are)
+ * prompts to install (Meteor)[http://meteor.com] to your `$HOME/bin` directory
+   * this changes the meteor install script to set the `PREFIX=$HOME` which then also creates a `$HOME/.meteor` directory 
+
+> in the process of writing this
 
 ## Installation
 
