@@ -43,23 +43,62 @@ In detail, the `wfmtr` bash script does the following:
      * uses the compiled binaries for Linux x86_64 so you should be on a 64 bit machine (most new ones are)
    * prompts to install (Meteor)[http://meteor.com] to your `$HOME/bin` directory
      * this changes the meteor install script to set the `PREFIX=$HOME` which then also creates a `$HOME/.meteor` directory
-2. **Creates apps**
-   * creates two custom apps listening on ports for meteor and mongo
-     * the first app `app_name` is where your meteor app is checked out from your git repo and is the port meteor runs on and should be connected to the website
-     * the second app `app_name_bin` is where the app is bundled and all the log and pid files live and provides an additional port for mongo to run on
+ 2. **Creates webfaction apps**
+   * creates two custom apps "listening on port" for meteor and mongo:
+     * The first app `app_name`:
+       * provides the port meteor runs on and is connected to the website
+       * is the root/base where your meteor code is checked out from your git repo to
+     * The second app `app_name_bin`:
+       * provides an additional port for mongo to run on
+       * is where the app is bundled for deployment
+       * is where all the log and pid files live
+ 3. **Creates placeholder meteor app**
+   * creates a default meteor app in `$HOME/tmp` then rsyncs to the empty `$HOME/webapps/app_name` folder
+ 4. **Writes config**
    * writes the environment config file to `$HOME/.wfmtr/app_name.conf`
 
-#### `deploy`
-
 #### `bundle`
+ 1. **Applies settings.json**
+   * checks if a settings.json file exists in the root of the project and adds it to the env config file
+ 2. **Builds Meteor app**
+   * builds the meteor app in the `app_name_bin` directory using `meteor build --directory $HOME/webapps/app_name_bin`
+   * per the meteor build `README`, installs node dependencies using `(cd programs/server && npm install)` within the bundle 
+
+#### `deploy`
+ 1. **Clones repo**
+   * simple check if a `.git` folder exists in the app
+   * the git repo code is clone out to `$HOME/tmp/app_name-timestamp` folder and then rsyncs into the existing app, replacing it's contents.
+ 2. **Applies settings.json**
+   * checks if a settings.json file exists in the root of the project and adds it to the env config file
+ 3. **Builds Meteor app**
+   * builds the meteor app in the `app_name_bin` directory using `meteor build --directory $HOME/webapps/app_name_bin`
+   * per the meteor build `README`, installs node dependencies using `(cd programs/server && npm install)` within the bundle directory
+ 4. **Creates website**
+   * deletes the site named like `app_name_site` for the current IP address
+   * creates the site named like `app_name_site` for the current IP address, host name, and app name
+   * **this process is kind of broken**
+     * need to implement check if site already exists
+     * need to confirm ip address and host name as it's possible you have multiple servers
 
 #### `run`
+ 1. **Checks for bundle**
+   * looks for bundle directory in `app_name_bin`
+   * checks if app is running (*broken?*)
+ 2. **Restarts or Starts Mongo**
+   * checks if mongo is running and starts it
+ 2. **Restarts or Starts Forever.js**
+   * performs a `forever restart` or `forever start` to get the app going
+   * logs are appended to
 
 #### `stop`
+ 1. **Checks for bundle**
+   * looks for bundle directory in `app_name_bin`
+ 2. **Stops Forever.js**
+   * performs a `forever stop`
 
 #### `restart`
-
-> **in the process of writing this**
+ 1. **wrapper for stop() then run()**
+   * looks for bundle directory in `app_name_bin`
 
 
 ## Broken Things
