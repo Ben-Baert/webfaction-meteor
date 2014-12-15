@@ -30,12 +30,14 @@ The `install.sh` script does the following:
  * creates a `$HOME/.wfmtr` directory if it doesn't exist to store configurations
  * checks your current `$PATH` for your home bin directory and adds an export statement if necessary
  * copies the `wfmtr` script to your bin directory and makes it executable
+
+### `wfmtr`
  
 You can type `wfmtr` to get the list of commands available. More docs as I have time to write them. For now the place to start is `bootstrap` and then `bundle appname` and then `run appname`. When you're satisfied that meteor is working, use `deploy appname` to grab your repo and push it live instead of the test app.
 
 In detail, the `wfmtr` bash script does the following:
 
-#### `bootstrap`
+##### `bootstrap`
  1. **Installs dependencies** (you only need to do this once)
    * prompts to install (Node.js)[http://nodejs.org] to your `$HOME/bin` directory
      * uses `--prefix=$HOME` so you can find `node_modules` in `$HOME/lib`
@@ -57,14 +59,14 @@ In detail, the `wfmtr` bash script does the following:
  4. **Writes config**
    * writes the environment config file to `$HOME/.wfmtr/app_name.conf`
 
-#### `bundle`
+##### `bundle`
  1. **Applies settings.json**
    * checks if a settings.json file exists in the root of the project and adds it to the env config file
  2. **Builds Meteor app**
    * builds the meteor app in the `app_name_bin` directory using `meteor build --directory $HOME/webapps/app_name_bin`
    * per the meteor build `README`, installs node dependencies using `(cd programs/server && npm install)` within the bundle 
 
-#### `deploy`
+##### `deploy`
  1. **Clones repo**
    * simple check if a `.git` folder exists in the app
    * the git repo code is clone out to `$HOME/tmp/app_name-timestamp` folder and then rsyncs into the existing app, replacing it's contents.
@@ -80,7 +82,7 @@ In detail, the `wfmtr` bash script does the following:
      * need to implement check if site already exists
      * need to confirm ip address and host name as it's possible you have multiple servers
 
-#### `run`
+##### `run`
  1. **Checks for bundle**
    * looks for bundle directory in `app_name_bin`
    * checks if app is running (*broken?*)
@@ -90,13 +92,13 @@ In detail, the `wfmtr` bash script does the following:
    * performs a `forever restart` or `forever start` to get the app going
    * logs are appended to
 
-#### `stop`
+##### `stop`
  1. **Checks for bundle**
    * looks for bundle directory in `app_name_bin`
  2. **Stops Forever.js**
    * performs a `forever stop`
 
-#### `restart`
+##### `restart`
  1. **wrapper for stop() then run()**
    * looks for bundle directory in `app_name_bin`
 
