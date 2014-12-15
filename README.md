@@ -6,7 +6,7 @@ This project provides the `wfmtr` shell script for deploying M&amp;M stack (Mong
 
 > NOTE: This project is working mostly. I've deployed one app with it and refining. Please fork and submit pull requests.
 
-## What it does
+## What `wfmtr` actually does
 
 The install script does the following:
 
