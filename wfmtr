@@ -408,11 +408,11 @@ function initMeteorApp() {
   APPDIR="$HOME/webapps/$APP"
   STAMP="$(date +%s)"
   CLONE="${APP}-${STAMP}"
-  echo $REPO $APP $APPDIR $APPDIR $CLONE
+  # echo $REPO $APP $APPDIR $APPDIR $CLONE
   if confirm "clone repo"; then
     git clone "${REPO}" "${CLONE}"
   fi
-  if confirm "rsync reset"; then
+  if confirm "rsync and replace with the cloned repo"; then
     rsync -a --delete ${CLONE}/ ${APP_DIR}/
   fi
   popd >/dev/null
@@ -444,7 +444,7 @@ function checkAppExists() {
 
 
 function checkWebsiteExists() {
-  WEBSITE_NAME="${APP_NAME}_site"
+  WEBSITE_NAME="$1"
   pyCmdStr="$( py_websiteExists $USER $PASSWORD ${SERVER_NAME^} )"
   pyCmdStr+="$( py_websiteExists $WEBSITE_NAME )"
   #echo "$pyCmdStr"
