@@ -74,9 +74,9 @@ server.create_app(session_id, \"$1\", 'custom_app_with_port')
 }
 
 
-function py_appExists() {
+function py_checkAppExists() {
   # takes app name as string
-  # eg. py_appExists myGreatApp
+  # eg. py_checkAppExists myGreatApp
   pyStr="
 print 1 if any(app['name']==\"$1\" for app in server.list_apps(session_id)) else 0
 "
@@ -135,6 +135,16 @@ print 1 if ('$1' in ([domain['subdomains'] for domain in server.list_domains(ses
 }
 
 
+function py_websiteExists() {
+  # takes subdomain and fqdn as string
+  # eg. py_subdomainExists www mysite.com
+  pyStr="
+print 1 if any(website['name']=='$1' for website in server.list_websites(session_id)) else 0
+"
+  echo "${pyStr}"
+}
+
+
 function py_create_website() {
   # takes site name, ip, one domain, appname as input
   # eg. py_create_website myGreatSite 1.1.1.1 mysite.com myGreatApp
@@ -147,7 +157,7 @@ server.create_website(session_id, '$1', '$2', False, ['$3'], ['$4', '/'])
 
 function py_websiteExists() {
   # takes app name as string
-  # eg. py_appExists myGreatApp
+  # eg. py_checkAppExists myGreatApp
   pyStr="
 print 1 if any(website['name']=='$1' for website in server.list_apps(session_id)) else 0
 "
@@ -317,29 +327,6 @@ function getMongoUrl() {
 # ------------------------------------------------------------------------------------------
 
 
-function downloadMongoRPMs() {
-  mkdir $MONGO_APP_DIR/dist
-  pushd $MONGO_APP_DIR/dist > /dev/null
-  for RPM in "${MONGO_RPMS[@]}";do
-    RPM_FILENAME=${MONGO_RPM_PREFIX}-${$RPM}-${MONGO_VERSION}.${ARCH}.rpm
-    URL=${MONGO_REPO}/${RPM_FILENAME}
-    wget $URL
-  done
-  popd > /dev/null
-}
-
-
-function downloadNodeRPMs() {
-  mkdir $NODE_APP_DIR/dist
-  pushd $NODE_APP_DIR/dist > /dev/null
-  for RPM in "${NODE_RPMS[@]}";do
-    URL=${NODE_REPO}/${RPM}
-    wget $URL
-  done
-  popd > /dev/null
-}
-
-
 function initEnv() {
   USER_BIN="$HOME/bin"
   USER_WFMTR="$HOME/.wfmtr"
@@ -349,32 +336,6 @@ function initEnv() {
   done
   updatePath $HOME/bin
   hash -r
-}
-
-
-function installScons() {
-  (
-  export TMPDIR=$HOME/tmp
-  export PATH="$HOME/bin:$PATH"
-  export C_INCLUDE_PATH="$HOME/include:$C_INCLUDE_PATH"
-  export LIBRARY_PATH="$HOME/lib:$LIBRARY_PATH"
-  export LD_LIBRARY_PATH="$HOME/lib:$LD_LIBRARY_PATH"
-  export PKG_CONFIG_PATH=$HOME/lib/pkgconfig
-  export PYTHON=/usr/local/bin/python2.7
-  cd ~/src
-  wget http://sourceforge.net/projects/boost/files/boost/1.55.0/boost_1_55_0.tar.gz
-  tar zxf boost_1_55_0.tar.gz
-  pushd boost_1_55_0 > /dev/null
-    ./bootstrap.sh
-    ./b2 install --prefix=$HOME
-  popd > /dev/null
-  wget http://sourceforge.net/projects/scons/files/scons/2.3.1/scons-2.3.1.tar.gz
-  tar zxf scons-2.3.1.tar.gz
-  pushd scons-2.3.1 > /dev/null
-    python2.7 setup.py install
-  popd > /dev/null
-  exit 1
-  )
 }
 
 
@@ -409,17 +370,6 @@ function installMongo() {
   for MNGBIN in *; do
     [ ! -f $HOME/bin/$MNGBIN ] && cp -v $MNGBIN $HOME/bin/
   done
-}
-
-
-function compileMongo() {
-  command -v scons >/dev/null 2>&1 || installScons
-  cd $1/src
-    wget https://fastdl.mongodb.org/src/mongodb-src-r2.4.12.tar.gz
-    tar zxf mongodb-src-r2.4.12.tar.gz
-    scons install --64 --ssl --prefix="${1}"
-  cd
-  echo "Installed MongoDB"
 }
 
 
@@ -484,12 +434,22 @@ function configExists() {
   fi
 }
 
-function appExists() {
+function checkAppExists() {
   if [ -d "$HOME/webapps/$1" ]; then
     true
   else
     false
   fi
+}
+
+
+function checkWebsiteExists() {
+  WEBSITE_NAME="${APP_NAME}_site"
+  pyCmdStr="$( py_websiteExists $USER $PASSWORD ${SERVER_NAME^} )"
+  pyCmdStr+="$( py_websiteExists $WEBSITE_NAME )"
+  #echo "$pyCmdStr"
+  pyCmd=$( python -c "${pyCmdStr}" )
+  echo $pyCmd
 }
 
 
@@ -593,7 +553,7 @@ function bootstrap() {
   MONGO_DATA_DIR=$BIN_APP_DIR/data
   if confirm "create the app and support binaries"; then
     for APP in "$APP_NAME" "$BIN_APP_NAME"; do
-      if appExists "${APP}"; then
+      if checkAppExists "${APP}"; then
         echo "App ${APP} exists."
         echo -n "  "
         if confirm "replace the app"; then
@@ -686,6 +646,7 @@ function deploy() {
   (
   sourceConfig $APP_NAME
   PASSWORD="$(getPassword)"
+  WEBSITE_DOMAIN="$APP_SUBDOMAIN.$APP_DOMAIN"
   echo
   if [ -f $APP_DIR/.git ]; then
     echo "Site exists. Did you want to update instead?"
@@ -698,34 +659,23 @@ function deploy() {
   if confirm "bundle app for node.js"; then
     bundle $APP_NAME
   fi
-  if confirm "delete and create website"; then
-    bs_deleteWebsite "${APP_NAME}_site" "$IP_ADDRESS"
-    bs_createWebsite "${APP_NAME}_site" "$IP_ADDRESS" "$APP_HOST" "$APP_NAME"
+  WEBSITE_NAME="${APP_NAME}_site"
+  if checkWebsiteExists "$WEBSITE_NAME"; then
+    if confirm "delete existing website"; then
+      bs_deleteWebsite "$WEBSITE_NAME" "$IP_ADDRESS"
+    else
+      echo -e "\nYou'll now be asked if you want to update the website."
+      echo -e "This is destructive so if you have multiple apps"
+      echo -e "running on the site, do this manually using the control panel.\n"
+      if confirm "update existing website"; then
+        bs_updateWebsite "$WEBSITE_NAME" "$IP_ADDRESS" "$WEBSITE_DOMAIN" "$APP_NAME"
+      fi
+    fi
+  else
+    bs_createWebsite "$WEBSITE_NAME" "$IP_ADDRESS" "$WEBSITE_DOMAIN" "$APP_NAME"
   fi
   echo -e "Deployment complete. Now use wfmtr run <app name>."
  )
-}
-
-
-function update() {
-  APP_NAME="$1"
-  sourceConfig $APP_NAME
-  pushd $APP_DIR > /dev/null
-  initMeteorApp $GIT_URL $APP_NAME
-  popd > /dev/null
-  if confirm "bundle app for node.js"; then
-    echo -n "  "
-    if confirm "archive bundle"; then
-      pushd $BIN_APP_DIR > /dev/null
-      STAMP=$(date +%s)
-      tar cf bundle.${STAMP}.tar bundle
-      echo "Bundle archived to bundle.${STAMP}.tar"
-      rm -rf bundle
-      popd > /dev/null
-    fi
-    bundle $APP_NAME
-  fi
-  echo -e "Update complete. Now use wfmtr restart <app name>."
 }
 
 
