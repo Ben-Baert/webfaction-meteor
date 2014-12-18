@@ -97,7 +97,7 @@ print ([app['port'] for app in server.list_apps(session_id) if app['name']=='$1'
 function py_delete_app() {
   # takes app name as input
   # eg. py_delete_app myGreatApp
-  
+
   pyStr="
 server.delete_app(session_id,'$1')
 "
@@ -223,7 +223,7 @@ function extractRPMs() {
 function updatePath() {
   # updates PATH and rehash
   # eg. updatePath $HOME/bin
-  # 
+  #
   NEWPATH=$1
   if [[ ":$PATH:" != *":$NEWPATH:"* ]]; then
   echo 'export PATH=${NEWPATH}:${PATH}' >> ~/.bashrc
@@ -710,6 +710,35 @@ function startdb() {
   )
 }
 
+# $HOME/webapps/application/mongodb-linux-architecture-version/bin/mongod --auth --dbpath $HOME/webapps/application/data/ --port number
+# The next part is to log in to the database and create an administrative user.
+#
+# $HOME/webapps/application/mongodb-linux-architecture-version/bin/mongo localhost:port/admin
+# > db.addUser({user: "<username>", pwd: "<password>", roles: ["userAdminAnyDatabase"]})
+# > db.auth("username", "password")
+# 1 //If the auth is successful, a '1' will return.
+
+function startMongod() {
+  #!/bin/sh
+  PREFIX=$HOME/webapps/mongo_db
+  $PREFIX/mongodb-linux-x86_64-2.6.3/bin/mongod --auth --dbpath $PREFIX/data/ --port <some port> --fork --logpath=$HOME/logs/user/mongod.log
+}
+
+
+function stopMongod() {
+  #!/bin/sh
+  PREFIX=$HOME/webapps/mongo_db
+  kill -2 `cat $PREFIX/data/mongod.lock`
+}
+
+
+function restartMongod() {
+  #!/bin/bash
+  $HOME/webapps/mongo_db/bin/stop
+  sleep 4
+  $HOME/webapps/mongo_db/bin/start
+}
+
 
 function run() {
   APP_NAME="$1"
@@ -811,5 +840,3 @@ if [[ $# -eq 2 ]]; then
 else
   usage
 fi
-
-
