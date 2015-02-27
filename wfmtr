@@ -68,7 +68,7 @@ function py_create_app() {
   # takes app name as input
   # eg. py_delete_app myGreatApp
   pyStr="
-server.create_app(session_id, \"$1\", 'custom_app_with_port')
+server.create_app(session_id, \"$1\", 'custom_websockets_app_with_port')
 "
   echo "${pyStr}"
 }
