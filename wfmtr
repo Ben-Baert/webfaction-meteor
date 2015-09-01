@@ -347,10 +347,11 @@ function installNode() {
   # eg. installNode $HOME
   PREFIX=$1
   cd $PREFIX/src
-  NODE_DIR=node-v0.10.33
+  NODE_VERSION=v0.10.36
+  NODE_DIR=node-${NODE_VERSION}
   [ -d "$NODE_DIR" ] && rm -rf $NODE_DIR
-  wget http://nodejs.org/dist/v0.10.36/node-v0.10.36.tar.gz
-  tar zxf node-v0.10.36.tar.gz
+  wget http://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}.tar.gz
+  tar zxf node-${NODE_VERSION}.tar.gz
   # git clone https://github.com/joyent/node.git
   cd $NODE_DIR
   ./configure --prefix=$PREFIX
